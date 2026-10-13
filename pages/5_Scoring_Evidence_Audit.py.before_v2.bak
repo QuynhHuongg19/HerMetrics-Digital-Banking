@@ -1,0 +1,340 @@
+
+import streamlit as st
+import pandas as pd
+from pathlib import Path
+
+from utils.theme import apply_theme
+
+st.set_page_config(
+    page_title="Scoring Evidence Audit",
+    page_icon="🔎",
+    layout="wide"
+)
+st.set_page_config
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+st.markdown("""
+<style>
+.stApp {background-color: #FFF8FB;}
+h1, h2, h3 {color: #AD1457;}
+[data-testid="stSidebar"] {background-color: #FCEAF2;}
+</style>
+""", unsafe_allow_html=True)
+
+
+@st.cache_data
+def load_data():
+    scores = pd.read_csv(
+        DATA_DIR / "processed_scores.csv",
+        encoding="utf-8-sig"
+    )
+    evidence = pd.read_csv(
+        DATA_DIR / "selected_evidence.csv",
+        encoding="utf-8-sig"
+    )
+
+    required_scores = [
+        "bank", "criterion", "criterion_name",
+        "final_score", "reason", "rubric"
+    ]
+    required_evidence = [
+        "bank", "criterion", "filename",
+        "page", "context"
+    ]
+
+    for filename, df, required in [
+        ("processed_scores.csv", scores, required_scores),
+        ("selected_evidence.csv", evidence, required_evidence)
+    ]:
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            st.error(f"{filename} thiếu cột: {missing}")
+            st.stop()
+
+        for col in ["bank", "criterion"]:
+            df[col] = df[col].astype(str).str.strip()
+
+    scores["final_score"] = pd.to_numeric(
+        scores["final_score"], errors="coerce"
+    )
+
+    return scores, evidence
+
+
+try:
+    scores, evidence = load_data()
+except FileNotFoundError as error:
+    st.error(f"Không tìm thấy file: {error.filename}")
+    st.stop()
+
+st.title("🔎 SCORING EVIDENCE AUDIT")
+st.caption(
+    "Đối chiếu điểm chấm chuyển đổi số "
+    "với bằng chứng từ báo cáo ngân hàng"
+)
+
+st.warning(
+    "Đây là công cụ hỗ trợ rà soát. "
+    "Bằng chứng được chọn và điểm chấm tự động "
+    "chưa đồng nghĩa với việc đã xác minh tính chính xác."
+)
+
+# 1. Chọn ngân hàng và tiêu chí
+banks = sorted(scores["bank"].dropna().unique())
+
+bank = st.selectbox(
+    "Chọn ngân hàng",
+    banks
+)
+
+bank_scores = scores[scores["bank"] == bank].copy()
+
+criteria = sorted(
+    bank_scores["criterion"].dropna().unique(),
+    key=lambda x: (
+        "ABCD".find(x[0]) if x and x[0] in "ABCD" else 99,
+        int(x[1:]) if x[1:].isdigit() else 99
+    )
+)
+
+criterion = st.selectbox(
+    "Chọn tiêu chí cần kiểm tra",
+    criteria
+)
+
+score_rows = bank_scores[
+    bank_scores["criterion"] == criterion
+]
+
+evidence_rows = evidence[
+    (evidence["bank"] == bank) &
+    (evidence["criterion"] == criterion)
+].copy()
+
+if score_rows.empty:
+    st.error("Không tìm thấy kết quả chấm điểm.")
+    st.stop()
+
+detail = score_rows.iloc[0]
+
+# 2. Tổng quan
+st.subheader(
+    f"{bank} — {criterion}: {detail['criterion_name']}"
+)
+
+c1, c2, c3 = st.columns(3)
+
+score = detail["final_score"]
+
+c1.metric(
+    "Điểm chấm",
+    f"{score:g}/2" if pd.notna(score) else "Thiếu"
+)
+c2.metric(
+    "Số bằng chứng được chọn",
+    len(evidence_rows)
+)
+c3.metric(
+    "Số báo cáo liên quan",
+    evidence_rows["filename"].nunique()
+)
+
+st.divider()
+
+# 3. Giải thích chấm điểm
+st.subheader("Giải thích kết quả chấm điểm")
+
+st.markdown("**Quy tắc chấm điểm (rubric)**")
+st.info(str(detail["rubric"]))
+
+st.markdown("**Lý do chấm điểm tự động**")
+st.write(
+    str(detail["reason"])
+    if pd.notna(detail["reason"])
+    else "Chưa có lý do"
+)
+
+if "confidence" in detail.index:
+    st.write("**Độ tin cậy:**", detail["confidence"])
+
+if "review_priority" in detail.index:
+    st.write(
+        "**Mức ưu tiên rà soát:**",
+        detail["review_priority"]
+    )
+
+if "warning" in detail.index:
+    warning = detail["warning"]
+    if pd.notna(warning) and str(warning).strip():
+        st.warning(str(warning))
+
+# 4. Danh sách bằng chứng
+st.divider()
+st.subheader("Danh sách bằng chứng liên quan")
+
+if evidence_rows.empty:
+    st.warning(
+        "Chưa tìm thấy bằng chứng được chọn "
+        "cho ngân hàng và tiêu chí này."
+    )
+else:
+    evidence_rows = evidence_rows.reset_index(drop=True)
+    evidence_rows.insert(
+        0, "evidence_no",
+        range(1, len(evidence_rows) + 1)
+    )
+
+    table_columns = [
+        "evidence_no", "filename", "page"
+    ]
+
+    if "tier2_score" in evidence_rows.columns:
+        table_columns.append("tier2_score")
+
+    if "confidence" in evidence_rows.columns:
+        table_columns.append("confidence")
+
+    st.dataframe(
+        evidence_rows[table_columns],
+        hide_index=True,
+        width="stretch"
+    )
+
+    options = evidence_rows["evidence_no"].tolist()
+
+    selected_no = st.selectbox(
+        "Chọn bằng chứng để xem nội dung",
+        options,
+        format_func=lambda n: (
+            f"Bằng chứng #{n}"
+        )
+    )
+
+    ev = evidence_rows[
+        evidence_rows["evidence_no"] == selected_no
+    ].iloc[0]
+
+    st.markdown("**Nguồn báo cáo:**")
+    st.write(ev["filename"])
+
+    st.markdown("**Trang tài liệu:**")
+    st.write(ev["page"])
+
+    if "tier2_score" in ev.index:
+        st.write("**Điểm lọc tầng 2:**", ev["tier2_score"])
+
+    st.markdown("**Nội dung bằng chứng:**")
+    st.text_area(
+        "Trích đoạn",
+        value=(
+            str(ev["context"])
+            if pd.notna(ev["context"]) else ""
+        ),
+        height=250,
+        disabled=True
+    )
+
+    if "reason" in ev.index and pd.notna(ev["reason"]):
+        st.markdown("**Giải thích chọn bằng chứng:**")
+        st.write(str(ev["reason"]))
+
+# 5. Bảng tổng quan khả năng truy xuất
+st.divider()
+st.subheader("Tổng quan liên kết điểm số – bằng chứng")
+
+evidence_counts = (
+    evidence.groupby(["bank", "criterion"])
+    .size()
+    .reset_index(name="evidence_count")
+)
+
+audit = scores.merge(
+    evidence_counts,
+    on=["bank", "criterion"],
+    how="left",
+    validate="one_to_one"
+)
+
+audit["evidence_count"] = (
+    audit["evidence_count"].fillna(0).astype(int)
+)
+
+audit["traceability"] = audit["evidence_count"].apply(
+    lambda n: (
+        "Có bằng chứng để rà soát"
+        if n > 0 else "Chưa có bằng chứng liên kết"
+    )
+)
+
+a1, a2, a3 = st.columns(3)
+
+a1.metric("Tổng kết quả chấm", len(audit))
+a2.metric(
+    "Có bằng chứng liên kết",
+    int((audit["evidence_count"] > 0).sum())
+)
+a3.metric(
+    "Chưa có bằng chứng liên kết",
+    int((audit["evidence_count"] == 0).sum())
+)
+
+audit_display = audit[
+    [
+        "bank", "criterion", "criterion_name",
+        "final_score", "evidence_count", "traceability"
+    ]
+].rename(columns={
+    "bank": "Ngân hàng",
+    "criterion": "Tiêu chí",
+    "criterion_name": "Tên tiêu chí",
+    "final_score": "Điểm",
+    "evidence_count": "Số bằng chứng",
+    "traceability": "Khả năng truy xuất"
+})
+
+st.dataframe(
+    audit_display,
+    hide_index=True,
+    width="stretch"
+)
+
+st.caption(
+    "Nguồn: processed_scores.csv và selected_evidence.csv. "
+    "Khả năng truy xuất chỉ xác nhận sự tồn tại của "
+    "bằng chứng liên kết, không xác nhận điểm chấm đúng."
+)
+
+# Cảnh báo các tiêu chí chưa có bằng chứng liên kết
+missing_evidence = audit[
+    audit["evidence_count"] == 0
+].copy()
+
+if not missing_evidence.empty:
+    st.error(
+        f"Phát hiện {len(missing_evidence)} "
+        "kết quả chấm điểm chưa có bằng chứng liên kết."
+    )
+
+    st.dataframe(
+        missing_evidence[
+            [
+                "bank",
+                "criterion",
+                "criterion_name",
+                "final_score"
+            ]
+        ].rename(columns={
+            "bank": "Ngân hàng",
+            "criterion": "Tiêu chí",
+            "criterion_name": "Tên tiêu chí",
+            "final_score": "Điểm đã chấm"
+        }),
+        hide_index=True,
+        width="stretch"
+    )
+else:
+    st.success(
+        "Tất cả kết quả chấm điểm đều có "
+        "ít nhất một bằng chứng liên kết."
+    )

@@ -1,0 +1,239 @@
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from pathlib import Path
+
+from utils.theme import apply_theme
+
+st.set_page_config(
+    page_title="Bank Comparison | BANK-DX 2025",
+    page_icon="📊",
+    layout="wide"
+)
+
+apply_theme()
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+COLORS = {
+    "BIDV": "#E9B82F",
+    "MB": "#1646D8",
+    "OCB": "#A9C935",
+    "VCB": "#008C66",
+    "VietinBank": "#64B5F6"
+}
+
+st.markdown("""
+<style>
+.stApp {background-color: #FFF8FB;}
+h1, h2, h3 {color: #AD1457;}
+[data-testid="stSidebar"] {background-color: #FCEAF2;}
+</style>
+""", unsafe_allow_html=True)
+
+@st.cache_data
+def load_data():
+    ranking = pd.read_csv(
+        DATA_DIR / "ranking.csv",
+        encoding="utf-8-sig"
+    )
+    scores = pd.read_csv(
+        DATA_DIR / "processed_scores.csv",
+        encoding="utf-8-sig"
+    )
+
+    required_ranking = ["bank", "rank", "BDTI", "A", "B", "C", "D"]
+    required_scores = ["bank", "criterion", "final_score"]
+
+    for name, df, columns in [
+        ("ranking.csv", ranking, required_ranking),
+        ("processed_scores.csv", scores, required_scores)
+    ]:
+        missing = [c for c in columns if c not in df.columns]
+        if missing:
+            st.error(f"{name} thiếu cột: {missing}")
+            st.stop()
+
+    ranking["bank"] = ranking["bank"].astype(str).str.strip()
+    scores["bank"] = scores["bank"].astype(str).str.strip()
+    scores["criterion"] = scores["criterion"].astype(str).str.strip()
+
+    for col in ["BDTI", "A", "B", "C", "D"]:
+        ranking[col] = pd.to_numeric(ranking[col], errors="coerce")
+
+    scores["final_score"] = pd.to_numeric(
+        scores["final_score"], errors="coerce"
+    )
+
+    return ranking, scores
+
+ranking, scores = load_data()
+
+st.title("📊 BANK COMPARISON")
+st.caption("So sánh chuyển đổi số giữa 5 ngân hàng năm 2025")
+
+st.warning(
+    "Điểm BDTI là kết quả chấm tự động, "
+    "chưa được xác nhận độc lập."
+)
+
+# 1. Chọn ngân hàng
+banks = ranking.sort_values("rank")["bank"].tolist()
+
+selected = st.multiselect(
+    "Chọn 2–5 ngân hàng để so sánh",
+    options=banks,
+    default=banks[:2]
+)
+
+if len(selected) < 2:
+    st.info("Vui lòng chọn ít nhất 2 ngân hàng.")
+    st.stop()
+
+df = ranking[ranking["bank"].isin(selected)].copy()
+detail = scores[scores["bank"].isin(selected)].copy()
+
+# 2. KPI
+c1, c2, c3 = st.columns(3)
+c1.metric("Số ngân hàng", len(selected))
+c2.metric("BDTI cao nhất", f"{df['BDTI'].max():.3f}")
+c3.metric(
+    "Chênh lệch BDTI",
+    f"{df['BDTI'].max() - df['BDTI'].min():.3f}"
+)
+
+st.divider()
+
+# 3. Biểu đồ BDTI
+st.subheader("So sánh BDTI")
+
+fig = px.bar(
+    df.sort_values("BDTI"),
+    x="BDTI",
+    y="bank",
+    color="bank",
+    orientation="h",
+    text="BDTI",
+    color_discrete_map=COLORS
+)
+fig.update_traces(
+    texttemplate="%{text:.3f}",
+    textposition="outside"
+)
+fig.update_layout(
+    showlegend=False,
+    height=350,
+    xaxis_range=[0, 110]
+)
+st.plotly_chart(fig, width="stretch")
+
+# 4. Bảng điểm
+st.subheader("Bảng điểm tổng hợp")
+
+st.dataframe(
+    df[["rank", "bank", "BDTI", "A", "B", "C", "D"]].rename(
+        columns={
+            "rank": "Hạng",
+            "bank": "Ngân hàng",
+            "A": "Trụ cột A",
+            "B": "Trụ cột B",
+            "C": "Trụ cột C",
+            "D": "Trụ cột D"
+        }
+    ),
+    hide_index=True,
+    width="stretch"
+)
+
+# 5. So sánh 4 trụ cột
+st.subheader("So sánh 4 trụ cột")
+
+pillar_df = df.melt(
+    id_vars="bank",
+    value_vars=["A", "B", "C", "D"],
+    var_name="pillar",
+    value_name="score"
+)
+
+fig2 = px.bar(
+    pillar_df,
+    x="pillar",
+    y="score",
+    color="bank",
+    barmode="group",
+    text="score",
+    color_discrete_map=COLORS
+)
+fig2.update_layout(
+    height=400,
+    yaxis_range=[0, 110]
+)
+st.plotly_chart(fig2, width="stretch")
+
+# 6. Radar
+st.subheader("Radar 4 trụ cột")
+
+fig3 = px.line_polar(
+    pillar_df,
+    r="score",
+    theta="pillar",
+    color="bank",
+    line_close=True,
+    color_discrete_map=COLORS,
+    category_orders={"pillar": ["A", "B", "C", "D"]}
+)
+fig3.update_traces(fill="toself")
+fig3.update_layout(
+    polar=dict(radialaxis=dict(range=[0, 100])),
+    height=450
+)
+st.plotly_chart(fig3, width="stretch")
+
+# 7. Heatmap 16 tiêu chí
+st.subheader("Heatmap 16 tiêu chí")
+
+criteria = [
+    f"{p}{i}" for p in "ABCD" for i in range(1, 5)
+]
+
+heatmap = detail.pivot_table(
+    index="bank",
+    columns="criterion",
+    values="final_score",
+    aggfunc="first"
+).reindex(index=selected, columns=criteria)
+
+fig4 = px.imshow(
+    heatmap,
+    text_auto=True,
+    aspect="auto",
+    color_continuous_scale="RdPu",
+    zmin=0,
+    zmax=2
+)
+fig4.update_layout(
+    height=max(320, len(selected) * 80)
+)
+st.plotly_chart(fig4, width="stretch")
+
+# 8. Tiêu chí chênh lệch lớn nhất
+st.subheader("Tiêu chí chênh lệch lớn nhất")
+
+spread = (
+    heatmap.max(axis=0) - heatmap.min(axis=0)
+).sort_values(ascending=False)
+
+spread_df = spread.reset_index()
+spread_df.columns = ["Tiêu chí", "Chênh lệch điểm"]
+
+st.dataframe(
+    spread_df,
+    hide_index=True,
+    width="stretch"
+)
+
+st.caption(
+    "Nguồn: ranking.csv và processed_scores.csv. "
+    "Chênh lệch phản ánh điểm chấm tự động."
+)

@@ -1,0 +1,77 @@
+"""Shared HerMetrics sidebar. Call after st.set_page_config()."""
+from pathlib import Path
+import streamlit as st
+
+PAGES = [
+    ("app.py", "Overview", "📊"),
+    ("pages/2_Ranking_Dashboard.py", "Ranking", "📈"),
+    ("pages/3_Bank_Profile.py", "Bank Profile", "🏦"),
+    ("pages/4_Bank_Comparison.py", "Bank Comparison", "⚖️"),
+    ("pages/1_Evidence_Explorer.py", "Evidence Explorer", "🔎"),
+    ("pages/5_Scoring_Evidence_Audit.py", "Scoring Audit", "📋"),
+    ("pages/6_Data_Validation.py", "Data Validation", "✅"),
+]
+
+CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap');
+[data-testid="stSidebar"] {background:#fffdf9!important;border-right:1px solid #e6dcd9!important;min-width:275px!important;}
+[data-testid="stSidebarContent"] {background:#fffdf9!important;}
+[data-testid="stSidebarNav"] {display:none!important;}
+.hm-shared-brand {font-family:'Playfair Display',Georgia,serif!important;color:#790c34!important;font-size:32px!important;line-height:1.18;font-weight:800;margin:10px 0 2px;white-space:nowrap;}
+.hm-shared-tag {color:#790c34!important;font-size:10px;font-weight:800;letter-spacing:1.35px;margin:0 0 27px;}
+.hm-shared-workspace {color:#85616f!important;font-size:12px;font-weight:800;letter-spacing:1.4px;margin:0 0 10px;}
+[data-testid="stSidebar"] [data-testid="stPageLink"] a,
+[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"] {border-radius:11px!important;padding:9px 11px!important;margin:2px 0!important;min-height:39px!important;text-decoration:none!important;}
+[data-testid="stSidebar"] [data-testid="stPageLink"] a *,
+[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"] * {font-family:'Be Vietnam Pro',Arial,sans-serif!important;color:#790c34!important;font-size:13px!important;font-weight:800!important;}
+[data-testid="stSidebar"] [data-testid="stPageLink"] a:hover {background:#f4ebed!important;}
+[data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"],
+[data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-selected="true"] {background:#eceff1!important;}
+/* Existing Evidence Explorer sidebar uses these class names. */
+[data-testid="stSidebar"] .hm-brand {font-family:'Playfair Display',Georgia,serif!important;font-size:32px!important;font-weight:800!important;color:#790c34!important;white-space:nowrap!important;}
+[data-testid="stSidebar"] .hm-tag {font-size:10px!important;letter-spacing:1.35px!important;font-weight:800!important;color:#790c34!important;}
+[data-testid="stSidebar"] .hm-label {font-size:12px!important;letter-spacing:1.4px!important;font-weight:800!important;color:#85616f!important;}
+</style>
+"""
+
+def apply_sidebar(root: Path, *, existing_custom_nav: bool = False):
+    """Render the same sidebar on each page; avoid duplicate nav on Evidence Explorer."""
+    st.markdown(CSS, unsafe_allow_html=True)
+    if existing_custom_nav:
+        return
+    with st.sidebar:
+        st.markdown('<div class="hm-shared-brand">HerMetrics</div><div class="hm-shared-tag">BANKING INTELLIGENCE</div><div class="hm-shared-workspace">WORKSPACE</div>', unsafe_allow_html=True)
+        for relative, label, icon in PAGES:
+            if (root / relative).is_file():
+                st.page_link(relative, label=label, icon=icon)
+
+# Compatibility wrapper for older HerMetrics pages
+def render(*args, **kwargs):
+    root = Path(__file__).resolve().parent
+
+    if "existing_custom_nav" in kwargs:
+        existing_custom_nav = kwargs["existing_custom_nav"]
+    else:
+        existing_custom_nav = not kwargs.get("show_nav", True)
+
+    return apply_sidebar(
+        root,
+        existing_custom_nav=existing_custom_nav
+    )
+
+    # Nhận diện trang đã có menu riêng
+    show_nav = kwargs.get("show_nav", True)
+
+    # Nếu trang đã có menu riêng, chỉ áp dụng CSS
+    return apply_sidebar(
+        root,
+        existing_custom_nav=not show_nav
+    )
+
+
+
+# HERMETRICS_SIDEBAR_ART_V3
+def _hm_add_sidebar_art():
+    from pathlib import Path
+    import streamlit as st

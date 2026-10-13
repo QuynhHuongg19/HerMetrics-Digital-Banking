@@ -1,0 +1,408 @@
+
+import streamlit as st
+import pandas as pd
+from pathlib import Path
+
+from utils.theme import apply_theme
+
+st.set_page_config(
+    page_title="Data Validation | BANK-DX",
+    page_icon="🛡️",
+    layout="wide"
+)
+apply_theme()
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+BANKS = ["BIDV", "MB", "OCB", "VCB", "VietinBank"]
+CRITERIA = [f"{p}{i}" for p in "ABCD" for i in range(1, 5)]
+TOL = 1e-6
+
+st.markdown("""
+<style>
+.stApp {background-color: #FFF8FB;}
+h1, h2, h3 {color: #AD1457;}
+[data-testid="stSidebar"] {background-color: #FCEAF2;}
+</style>
+""", unsafe_allow_html=True)
+
+
+@st.cache_data
+def load_data():
+    files = {
+        "ranking": "ranking.csv",
+        "scores": "processed_scores.csv",
+        "pillars": "pillar_scores.csv",
+        "evidence": "selected_evidence.csv"
+    }
+    data = {}
+    for key, filename in files.items():
+        data[key] = pd.read_csv(
+            DATA_DIR / filename,
+            encoding="utf-8-sig"
+        )
+    return data
+
+
+try:
+    data = load_data()
+except Exception as e:
+    st.error(f"Không đọc được dữ liệu: {e}")
+    st.stop()
+
+ranking = data["ranking"].copy()
+scores = data["scores"].copy()
+pillars = data["pillars"].copy()
+evidence = data["evidence"].copy()
+
+required = {
+    "ranking.csv": (
+        ranking, ["bank", "rank", "BDTI", "A", "B", "C", "D"]
+    ),
+    "processed_scores.csv": (
+        scores, ["bank", "criterion", "pillar", "final_score"]
+    ),
+    "pillar_scores.csv": (
+        pillars, ["bank", "pillar", "pillar_score"]
+    ),
+    "selected_evidence.csv": (
+        evidence, ["bank", "criterion"]
+    )
+}
+
+for filename, (df, columns) in required.items():
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        st.error(f"{filename} thiếu cột: {missing}")
+        st.stop()
+
+for df in [ranking, scores, pillars, evidence]:
+    df["bank"] = df["bank"].astype("string").str.strip()
+
+for df in [scores, evidence]:
+    df["criterion"] = df["criterion"].astype("string").str.strip()
+
+scores["pillar"] = scores["pillar"].astype("string").str.strip()
+pillars["pillar"] = pillars["pillar"].astype("string").str.strip()
+
+scores["final_score"] = pd.to_numeric(
+    scores["final_score"], errors="coerce"
+)
+pillars["pillar_score"] = pd.to_numeric(
+    pillars["pillar_score"], errors="coerce"
+)
+ranking["BDTI"] = pd.to_numeric(
+    ranking["BDTI"], errors="coerce"
+)
+ranking["rank"] = pd.to_numeric(
+    ranking["rank"], errors="coerce"
+)
+
+for p in "ABCD":
+    ranking[p] = pd.to_numeric(ranking[p], errors="coerce")
+
+st.title("🛡️ DATA VALIDATION")
+st.caption(
+    "Kiểm tra tính nhất quán dữ liệu chấm điểm "
+    "và xếp hạng chuyển đổi số năm 2025"
+)
+
+st.info(
+    "Trang này chỉ kiểm tra tính hợp lệ và nhất quán "
+    "của dữ liệu. Không xác minh độc lập nội dung bằng chứng."
+)
+
+issues = []
+
+def add_issue(category, detail):
+    issues.append({
+        "Nhóm kiểm tra": category,
+        "Chi tiết": detail
+    })
+
+
+# 1. Kiểm tra số lượng và khóa dữ liệu
+if len(ranking) != 5:
+    add_issue("Ranking", f"Có {len(ranking)} dòng, cần 5.")
+
+if len(scores) != 80:
+    add_issue("Scores", f"Có {len(scores)} dòng, cần 80.")
+
+if len(pillars) != 20:
+    add_issue("Pillars", f"Có {len(pillars)} dòng, cần 20.")
+
+for name, df, keys in [
+    ("Ranking", ranking, ["bank"]),
+    ("Scores", scores, ["bank", "criterion"]),
+    ("Pillars", pillars, ["bank", "pillar"])
+]:
+    duplicates = df.duplicated(keys, keep=False)
+    if duplicates.any():
+        add_issue(
+            name,
+            f"Có {int(duplicates.sum())} dòng trùng khóa."
+        )
+
+expected_scores = pd.MultiIndex.from_product(
+    [BANKS, CRITERIA],
+    names=["bank", "criterion"]
+)
+
+actual_scores = pd.MultiIndex.from_frame(
+    scores[["bank", "criterion"]].dropna()
+)
+
+missing_pairs = expected_scores.difference(actual_scores)
+extra_pairs = actual_scores.difference(expected_scores)
+
+for bank, criterion in missing_pairs:
+    add_issue("Thiếu tiêu chí", f"{bank} – {criterion}")
+
+for bank, criterion in extra_pairs:
+    add_issue("Tiêu chí không hợp lệ", f"{bank} – {criterion}")
+
+if set(ranking["bank"].dropna()) != set(BANKS):
+    add_issue("Ranking", "Danh sách ngân hàng không đúng.")
+
+# 2. Kiểm tra điểm và mã trụ cột
+invalid_scores = scores[
+    ~scores["final_score"].isin([0, 1, 2])
+]
+
+for _, r in invalid_scores.iterrows():
+    add_issue(
+        "Điểm không hợp lệ",
+        f"{r['bank']} – {r['criterion']}: {r['final_score']}"
+    )
+
+wrong_pillars = scores[
+    scores["pillar"] != scores["criterion"].str[0]
+]
+
+for _, r in wrong_pillars.iterrows():
+    add_issue(
+        "Sai trụ cột",
+        f"{r['bank']} – {r['criterion']}: {r['pillar']}"
+    )
+
+# 3. Tính lại điểm trụ cột từ 16 tiêu chí
+calculated_pillars = (
+    scores.groupby(["bank", "pillar"], as_index=False)
+    .agg(
+        raw_score=("final_score", "sum"),
+        count=("criterion", "nunique"),
+        valid_count=("final_score", "count")
+    )
+)
+
+calculated_pillars["calculated_score"] = (
+    calculated_pillars["raw_score"] / 8 * 100
+)
+
+pillar_check = calculated_pillars.merge(
+    pillars[["bank", "pillar", "pillar_score"]],
+    on=["bank", "pillar"],
+    how="outer",
+    validate="one_to_one"
+)
+
+for _, r in pillar_check.iterrows():
+    bank, p = r["bank"], r["pillar"]
+
+    if (
+        pd.isna(r["calculated_score"])
+        or pd.isna(r["pillar_score"])
+    ):
+        add_issue("Điểm trụ cột", f"{bank} – {p}: thiếu dữ liệu.")
+    elif abs(r["calculated_score"] - r["pillar_score"]) > TOL:
+        add_issue(
+            "Sai điểm trụ cột",
+            f"{bank} – {p}: tính lại {r['calculated_score']:.3f}, "
+            f"file {r['pillar_score']:.3f}"
+        )
+
+    if pd.notna(r["count"]) and (
+        r["count"] != 4 or r["valid_count"] != 4
+    ):
+        add_issue(
+            "Thiếu điểm trụ cột",
+            f"{bank} – {p}: chưa đủ 4 điểm hợp lệ."
+        )
+
+# 4. Tính lại BDTI và thứ hạng
+bdti_calc = (
+    scores.groupby("bank", as_index=False)
+    .agg(
+        total_score=("final_score", "sum"),
+        valid_count=("final_score", "count")
+    )
+)
+
+bdti_calc["BDTI_tinh_lai"] = (
+    bdti_calc["total_score"] / 32 * 100
+)
+
+bdti_check = ranking.merge(
+    bdti_calc,
+    on="bank",
+    how="outer",
+    validate="one_to_one"
+)
+
+for _, r in bdti_check.iterrows():
+    bank = r["bank"]
+
+    if r["valid_count"] != 16:
+        add_issue("BDTI", f"{bank}: thiếu điểm tiêu chí.")
+    elif pd.isna(r["BDTI"]) or abs(
+        r["BDTI"] - r["BDTI_tinh_lai"]
+    ) > TOL:
+        add_issue("Sai BDTI", f"{bank}: BDTI không khớp.")
+
+    pillar_values = [r[p] for p in "ABCD"]
+    if any(pd.isna(x) for x in pillar_values):
+        add_issue("BDTI", f"{bank}: thiếu điểm trụ cột.")
+    elif pd.notna(r["BDTI"]) and abs(
+        sum(pillar_values) / 4 - r["BDTI"]
+    ) > TOL:
+        add_issue(
+            "Sai BDTI",
+            f"{bank}: trung bình 4 trụ cột không khớp."
+        )
+
+    for p in "ABCD":
+        matches = calculated_pillars[
+            (calculated_pillars["bank"] == bank) &
+            (calculated_pillars["pillar"] == p)
+        ]
+        if len(matches) == 1 and pd.notna(r[p]):
+            expected = matches.iloc[0]["calculated_score"]
+            if abs(r[p] - expected) > TOL:
+                add_issue(
+                    "Sai điểm Ranking",
+                    f"{bank} – {p}: không khớp điểm tiêu chí."
+                )
+
+if ranking["BDTI"].notna().all():
+    expected_rank = ranking["BDTI"].rank(
+        method="min", ascending=False
+    )
+    for idx, r in ranking.iterrows():
+        if pd.isna(r["rank"]) or r["rank"] != expected_rank.loc[idx]:
+            add_issue(
+                "Sai thứ hạng",
+                f"{r['bank']}: hạng {r['rank']}, "
+                f"dự kiến {expected_rank.loc[idx]:.0f}"
+            )
+
+# 5. Kiểm tra bằng chứng liên kết
+evidence_counts = (
+    evidence.groupby(["bank", "criterion"])
+    .size()
+    .reset_index(name="evidence_count")
+)
+
+audit = scores.merge(
+    evidence_counts,
+    on=["bank", "criterion"],
+    how="left",
+    validate="one_to_one"
+)
+audit["evidence_count"] = (
+    audit["evidence_count"].fillna(0).astype(int)
+)
+
+unlinked = audit[audit["evidence_count"] == 0]
+
+# 6. Hiển thị kết quả
+st.subheader("Tổng quan kiểm tra")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Ngân hàng", ranking["bank"].nunique())
+c2.metric("Kết quả chấm", len(scores))
+c3.metric("Vấn đề dữ liệu", len(issues))
+c4.metric("Thiếu liên kết bằng chứng", len(unlinked))
+
+st.divider()
+
+st.subheader("Kiểm tra tính nhất quán")
+
+if not issues:
+    st.success(
+        "Không phát hiện sai lệch cấu trúc, "
+        "điểm số hoặc công thức BDTI trong các phép kiểm tra."
+    )
+else:
+    st.error(f"Phát hiện {len(issues)} vấn đề cần xử lý.")
+    st.dataframe(
+        pd.DataFrame(issues),
+        hide_index=True,
+        width="stretch"
+    )
+
+st.subheader("Đối chiếu BDTI")
+
+st.dataframe(
+    bdti_check[
+        ["bank", "rank", "BDTI",
+         "BDTI_tinh_lai", "total_score", "valid_count"]
+    ].rename(columns={
+        "bank": "Ngân hàng",
+        "rank": "Hạng",
+        "BDTI": "BDTI trong file",
+        "BDTI_tinh_lai": "BDTI tính lại",
+        "total_score": "Tổng điểm /32",
+        "valid_count": "Số điểm hợp lệ"
+    }),
+    hide_index=True,
+    width="stretch"
+)
+
+st.subheader("Đối chiếu điểm 4 trụ cột")
+
+st.dataframe(
+    pillar_check,
+    hide_index=True,
+    width="stretch"
+)
+
+st.subheader("Trường hợp thiếu bằng chứng liên kết")
+
+if unlinked.empty:
+    st.success("Tất cả tiêu chí đều có bằng chứng liên kết.")
+else:
+    st.warning(
+        f"Có {len(unlinked)} tiêu chí chưa có bằng chứng liên kết. "
+        "Không tự động thay đổi điểm số."
+    )
+    st.dataframe(
+        unlinked[
+            ["bank", "criterion", "final_score", "evidence_count"]
+        ],
+        hide_index=True,
+        width="stretch"
+    )
+
+st.divider()
+
+st.subheader("Xuất báo cáo kiểm tra")
+
+report = pd.DataFrame(issues)
+if report.empty:
+    report = pd.DataFrame([{
+        "Nhóm kiểm tra": "Tổng kết",
+        "Chi tiết": "Không phát hiện sai lệch trong các phép kiểm tra."
+    }])
+
+st.download_button(
+    "📥 Tải báo cáo Data Validation",
+    data=report.to_csv(index=False).encode("utf-8-sig"),
+    file_name="data_validation_report.csv",
+    mime="text/csv"
+)
+
+st.caption(
+    "Nguồn: scoring.py và các file CSV của nhóm. "
+    "Kiểm tra tính nhất quán không thay thế việc xác minh "
+    "bằng chứng, rubric và tính hợp lý của điểm chấm."
+)
+

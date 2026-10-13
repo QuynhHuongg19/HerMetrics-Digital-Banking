@@ -1,0 +1,417 @@
+"""HerMetrics — Ranking Dashboard 2025 (isolated page).
+
+Copy to pages/2_Ranking_Dashboard.py. Requires pandas, streamlit, plotly.
+
+Reads real data/ranking.csv; does not modify any other page.
+
+"""
+
+from __future__ import annotations
+
+
+
+import base64
+
+from html import escape
+
+from pathlib import Path
+
+
+
+import pandas as pd
+
+import streamlit as st
+
+import plotly.graph_objects as go
+
+
+
+st.set_page_config(page_title="Ranking Dashboard | HerMetrics", page_icon="🏆", layout="wide", initial_sidebar_state="expanded")
+
+ROOT = Path(__file__).resolve().parents[1]
+
+DATA_CANDIDATES = [ROOT / "data" / "ranking.csv", ROOT / "output" / "ranking.csv"]
+
+ART_CANDIDATES = [
+
+    ROOT / "assets" / "vietnam_art" / "ranking_lang_que.jpg",
+
+    ROOT / "assets" / "vietnam_art" / "ranking_lang_que.png",
+
+    ROOT / "assets" / "vietnam_art" / "lang_que_viet_nam.png",
+
+]
+
+LOGO_DIR = ROOT / "assets" / "logos"
+
+BURGUNDY, TEAL, GOLD, NAVY = "#790C34", "#167A73", "#D59A24", "#213747"
+
+BANK_COLORS = {"OCB":"#93A92B", "MB":"#285ED5", "BIDV":"#E1A92D", "VietinBank":"#58A7D8", "VCB":"#168D70"}
+
+PILLARS = {"A":"A · Chiến lược & nguồn lực số", "B":"B · Sản phẩm số & trải nghiệm KH", "C":"C · Công nghệ & dữ liệu", "D":"D · Vận hành số & an toàn"}
+
+
+
+@st.cache_data(show_spinner=False)
+
+def read_csv(path: str, stamp: float) -> pd.DataFrame:
+
+    frame = pd.read_csv(path, encoding="utf-8-sig")
+
+    frame.columns = frame.columns.str.strip()
+
+    needed = ["bank", "BDTI", "A", "B", "C", "D"]
+
+    missing = [c for c in needed if c not in frame.columns]
+
+    if missing:
+
+        raise ValueError("ranking.csv thiếu các cột: " + ", ".join(missing))
+
+    frame["bank"] = frame["bank"].astype(str).str.strip()
+
+    frame["bank"] = frame["bank"].replace({"Vietinbank":"VietinBank", "VTB":"VietinBank"})
+
+    for col in ["BDTI", "A", "B", "C", "D"]:
+
+        frame[col] = pd.to_numeric(frame[col], errors="coerce")
+
+    return frame.dropna(subset=["bank", "BDTI"]).sort_values("BDTI", ascending=False).reset_index(drop=True)
+
+
+
+def image_uri(path: Path) -> str:
+
+    if not path.is_file():
+
+        return ""
+
+    mime = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+
+    return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+
+
+
+csv_path = next((p for p in DATA_CANDIDATES if p.is_file()), None)
+
+if csv_path is None:
+
+    st.error("Không tìm thấy ranking.csv. Hãy đặt file tại data/ranking.csv (hoặc output/ranking.csv) trong dự án.")
+
+    st.stop()
+
+try:
+
+    full = read_csv(str(csv_path), csv_path.stat().st_mtime)
+
+except Exception as exc:
+
+    st.error(f"Không đọc được ranking.csv: {exc}")
+
+    st.stop()
+
+
+
+art_path = next((p for p in ART_CANDIDATES if p.is_file()), None)
+
+art = image_uri(art_path) if art_path else ""
+
+
+
+st.markdown("""
+
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap');
+
+:root{--wine:#790c34;--ink:#213747;--line:#e6dfd8}
+
+[data-testid="stAppViewContainer"]{background:#fffdfb}
+
+[data-testid="stMainBlockContainer"]{max-width:1580px;padding-top:1.1rem;padding-bottom:3rem}
+
+[data-testid="stMain"] *{font-family:'Be Vietnam Pro',Arial,sans-serif}
+
+[data-testid="stMain"] h1,[data-testid="stMain"] h2,[data-testid="stMain"] h3{color:var(--wine);font-weight:800}
+
+/* Banner: tranh xe trâu nằm bên phải và loang dần vào nền kem */
+.hm-r-hero{height:290px;border-radius:20px;overflow:hidden;display:grid;grid-template-columns:36% 64%;border:1px solid #eaded2;background:#fff9ef;margin-bottom:14px}
+.hm-r-hero-copy{padding:26px 12px 24px 30px;display:flex;flex-direction:column;justify-content:center;position:relative;z-index:2;background:#fff9ef}
+.hm-r-hero-art{height:100%;min-width:0;background:#f5e9d7;overflow:hidden;position:relative}
+.hm-r-hero-art img{display:block;width:100%;height:100%;object-fit:cover;object-position:51% 77%}
+.hm-r-hero-art::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,#fff9ef 0%,rgba(255,249,239,.93) 8%,rgba(255,249,239,.58) 20%,rgba(255,249,239,.16) 34%,rgba(255,249,239,0) 47%)}
+.hm-r-hero-art-empty{height:100%;background:linear-gradient(100deg,#fff9ef,#d8e8dd)}
+
+.hm-r-eyebrow{font-size:12px;font-weight:800;letter-spacing:2.3px;color:#7c1938;margin-bottom:10px}
+
+.hm-r-title{font-family:'Playfair Display',Georgia,serif!important;font-size:clamp(26px,2.45vw,39px);line-height:1.12;font-weight:800;color:#790c34;text-shadow:0 1px 0 #fff;margin:0}
+
+.hm-r-sub{font-size:12px;font-weight:700;color:#24465a;margin-top:12px}
+
+.hm-r-section{font-family:'Playfair Display',Georgia,serif!important;font-size:25px;color:#790c34;font-weight:800;margin:20px 0 12px;border-left:4px solid #9a234a;padding-left:12px}
+
+.hm-r-kpi{border:1px solid #e8e0d8;border-radius:16px;padding:17px 19px;min-height:121px;box-shadow:0 5px 18px #45270e09}
+
+.hm-r-kpi-label{font-size:13px;font-weight:800;color:#284459;margin-bottom:12px}
+
+.hm-r-kpi-value{font-family:'Playfair Display',Georgia,serif!important;font-size:33px;font-weight:800;color:#790c34;line-height:1.15}
+
+.hm-r-kpi-note{font-size:11px;color:#556674;margin-top:9px}
+
+.hm-r-top{background:#fff;border:1px solid #eaded6;border-radius:17px;padding:17px;min-height:205px;box-shadow:0 5px 15px #3a261008}
+
+.hm-r-medal{font-size:11px;letter-spacing:1px;font-weight:800;color:#8d4561}
+
+.hm-r-bank{font-size:20px;font-weight:800;color:#223748;margin-top:12px}
+
+.hm-r-score{font-family:'Playfair Display',Georgia,serif!important;font-size:33px;font-weight:800;color:#790c34;margin-top:4px}
+
+.hm-r-progress{height:9px;background:#f2e9e7;border-radius:10px;overflow:hidden;margin-top:12px}
+
+.hm-r-progress>div{height:100%;border-radius:10px}
+
+.hm-r-panel{border:1px solid #e8e0d8;border-radius:17px;background:#fff;padding:14px 18px 4px}
+
+.hm-r-panel-title{font-family:'Playfair Display',Georgia,serif!important;color:#790c34;font-weight:800;font-size:21px;margin-bottom:4px}
+
+.hm-r-panel-note{color:#607080;font-size:12px}
+
+.hm-r-insight{border-radius:15px;border:1px solid #e9ddd0;background:#fff8ec;padding:17px 20px;color:#253d4b;font-size:14px;line-height:1.8}
+
+.hm-r-footer{font-size:12px;color:#7d7580;margin-top:16px;padding-top:10px;border-top:1px solid #ece6e2}
+
+[data-testid="stMultiSelect"] [data-baseweb="tag"]{background:#167a73!important}
+
+[data-testid="stMultiSelect"] [data-baseweb="tag"] span{color:white!important}
+
+[data-testid="stDataFrame"]{border:1px solid #d7e2dc;border-radius:12px;overflow:hidden}
+
+/* Match the burgundy HerMetrics navigation used in other tabs. */
+
+[data-testid="stSidebar"]{background:#fffdf9!important;border-right:1px solid #eadfdc!important;min-width:265px!important}
+
+[data-testid="stSidebar"] [data-testid="stSidebarContent"]{background:#fffdf9!important}
+
+[data-testid="stSidebarNav"] a{border-radius:12px!important;margin:4px 9px!important;padding:10px 12px!important;color:#790c34!important;font-size:15px!important;font-weight:800!important}
+
+[data-testid="stSidebarNav"] a *{color:#790c34!important;font-weight:800!important}
+
+[data-testid="stSidebarNav"] a[aria-current="page"], [data-testid="stSidebarNav"] a[aria-selected="true"]{background:#f4e8ec!important}
+
+[data-testid="stSidebarNav"] a:hover{background:#f8eff1!important}
+
+.hm-r-side-brand{font-family:'Playfair Display',Georgia,serif;font-size:31px;line-height:1.1;font-weight:800;color:#790c34;margin:12px 0 3px}
+
+.hm-r-side-caption{font-size:10px;font-weight:800;letter-spacing:1.8px;color:#8d3152;margin-bottom:13px}
+
+.hm-r-side-art img{width:100%;height:235px;object-fit:cover;object-position:53% 77%;border-radius:15px;border:1px solid #e9d8c7}
+
+.hm-r-side-note{font-size:11px;color:#745b63;text-align:center;margin-top:7px}
+
+@media(max-width:900px){.hm-r-hero{height:240px;grid-template-columns:40% 60%}.hm-r-hero-copy{padding:16px}.hm-r-title{font-size:27px}.hm-r-kpi{min-height:110px}}
+
+@media(max-width:650px){.hm-r-hero{height:auto;grid-template-columns:1fr}.hm-r-hero-copy{min-height:170px}.hm-r-hero-art{height:210px}.hm-r-hero-art::after{background:linear-gradient(180deg,#fff9ef 0%,rgba(255,249,239,0) 32%)}}
+
+</style>
+
+""", unsafe_allow_html=True)
+
+
+
+# Sidebar navigation stays native so all pages remain clickable.
+
+# Add the same countryside painting below the existing navigation.
+
+with st.sidebar:
+
+    st.markdown('<div class="hm-r-side-brand">HerMetrics</div><div class="hm-r-side-caption">BANKING INTELLIGENCE</div>', unsafe_allow_html=True)
+
+    if art:
+
+        st.markdown(f'<div class="hm-r-side-art"><img src="{art}" alt="Tranh làng quê Việt Nam với xe trâu"></div><div class="hm-r-side-note">Vietnamese countryside · Ranking 2025</div>', unsafe_allow_html=True)
+
+
+
+# The hero uses a separate image column: text cannot cover the buffalo cart.
+
+art_html = f'<img src="{art}" alt="Tranh làng quê Việt Nam: người nông dân và xe trâu">' if art else '<div class="hm-r-hero-art-empty"></div>'
+
+st.markdown(f'''<div class="hm-r-hero">
+
+<div class="hm-r-hero-copy">
+
+<div class="hm-r-eyebrow">HERMETRICS / BANKING INTELLIGENCE</div>
+
+<div class="hm-r-title">Digital Transformation<br>Ranking 2025</div>
+
+<div class="hm-r-sub">Xếp hạng chuyển đổi số ngân hàng thương mại Việt Nam · Dữ liệu BDTI ước tính</div>
+
+</div><div class="hm-r-hero-art">{art_html}</div></div>''', unsafe_allow_html=True)
+
+if not art:
+
+    st.warning("Chưa tìm thấy ảnh xe trâu. Đặt ranking_lang_que.jpg trong assets/vietnam_art/.")
+
+
+
+left, right = st.columns([2, 1])
+
+with left:
+
+    selected = st.multiselect("Ngân hàng", full["bank"].tolist(), default=full["bank"].tolist(), key="ranking_selected_banks")
+
+with right:
+
+    mode = st.selectbox("Chế độ hiển thị", ["Tổng quan", "Chi tiết 4 trụ cột"], key="ranking_mode")
+
+df = full[full["bank"].isin(selected)].sort_values("BDTI", ascending=False).reset_index(drop=True)
+
+if df.empty:
+
+    st.info("Hãy chọn ít nhất một ngân hàng để hiển thị bảng xếp hạng.")
+
+    st.stop()
+
+
+
+metrics = [
+
+    ("Số ngân hàng", f"{len(df)}", "Ngân hàng đang hiển thị", "#fff2e7"),
+
+    ("BDTI cao nhất", f"{df['BDTI'].max():.3f}", "Thang điểm 100", "#e2f2ed"),
+
+    ("BDTI trung bình", f"{df['BDTI'].mean():.3f}", "Trung bình nhóm được chọn", "#fff1c9"),
+
+    ("Trụ cột đánh giá", "04", "A · B · C · D", "#eaf1df"),
+
+]
+
+cols = st.columns(4, gap="medium")
+
+for col, (label, val, note, bg) in zip(cols, metrics):
+
+    with col:
+
+        st.markdown(f'<div class="hm-r-kpi" style="background:{bg}"><div class="hm-r-kpi-label">{label}</div><div class="hm-r-kpi-value">{val}</div><div class="hm-r-kpi-note">{note}</div></div>', unsafe_allow_html=True)
+
+
+
+st.markdown('<div class="hm-r-section">🏆 Leading Banks</div>', unsafe_allow_html=True)
+
+top_cols = st.columns(3, gap="medium")
+
+for idx, col in enumerate(top_cols):
+
+    with col:
+
+        if idx >= len(df):
+
+            st.empty()
+
+            continue
+
+        item = df.iloc[idx]
+
+        name = str(item["bank"])
+
+        score = float(item["BDTI"])
+
+        color = BANK_COLORS.get(name, TEAL)
+
+        logo = LOGO_DIR / f"{name}.jpg"
+
+        logo_html = f'<img src="{image_uri(logo)}" alt="{escape(name)}" style="height:42px;max-width:130px;object-fit:contain;margin-top:8px">' if logo.is_file() else ""
+
+        st.markdown(f'''<div class="hm-r-top"><div class="hm-r-medal">{'🥇' if idx == 0 else '🥈' if idx == 1 else '🥉'} TOP {idx+1} · HẠNG {idx+1} TRONG NHÓM ĐANG CHỌN</div>{logo_html}
+
+<div class="hm-r-bank">{escape(name)}</div><div class="hm-r-score">{score:.3f}</div><div style="font-size:11px;color:#73808a">BDTI / 100</div>
+
+<div class="hm-r-progress"><div style="width:{min(max(score,0),100)}%;background:{color}"></div></div></div>''', unsafe_allow_html=True)
+
+
+
+st.markdown('<div class="hm-r-section">Ranking Analytics</div>', unsafe_allow_html=True)
+
+c1, c2 = st.columns([1.12, 1], gap="medium")
+
+with c1:
+
+    st.markdown('<div class="hm-r-panel-title">Overall BDTI Ranking</div><div class="hm-r-panel-note">Xếp hạng theo điểm BDTI / 100 · Dữ liệu ranking.csv</div>', unsafe_allow_html=True)
+
+    rev = df.iloc[::-1]
+
+    fig = go.Figure(go.Bar(x=rev["BDTI"], y=rev["bank"], orientation="h", marker_color=[BANK_COLORS.get(n, TEAL) for n in rev["bank"]], text=[f"{v:.3f}" for v in rev["BDTI"]], textposition="outside", hovertemplate="%{y}: %{x:.3f}<extra></extra>"))
+
+    fig.update_layout(height=355, margin=dict(l=12,r=60,t=18,b=35), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(family="Arial",size=13,color=NAVY), xaxis=dict(range=[0,108],title="BDTI / 100",gridcolor="#eee9e4",zeroline=False), yaxis=dict(title=""), showlegend=False)
+
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar":False})
+
+with c2:
+
+    st.markdown('<div class="hm-r-panel-title">Pillar Performance</div><div class="hm-r-panel-note">Điểm theo 4 trụ cột của ngân hàng được chọn</div>', unsafe_allow_html=True)
+
+    radar_bank = st.selectbox("Ngân hàng phân tích", df["bank"].tolist(), key="ranking_radar_bank")
+
+    row = df.loc[df["bank"] == radar_bank].iloc[0]
+
+    labels = ["A · Chiến lược", "B · Sản phẩm", "C · Công nghệ", "D · Vận hành"]
+
+    vals = [float(row[p]) if pd.notna(row[p]) else 0 for p in "ABCD"]
+
+    radar = go.Figure(go.Scatterpolar(r=vals+[vals[0]], theta=labels+[labels[0]], fill="toself", line=dict(color=BURGUNDY,width=3), fillcolor="rgba(121,12,52,.18)", marker=dict(size=7,color=BURGUNDY), name=radar_bank))
+
+    radar.update_layout(height=315, margin=dict(l=45,r=45,t=20,b=25), paper_bgcolor="rgba(0,0,0,0)", showlegend=False, font=dict(size=12,color=NAVY), polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True,range=[0,100],tickvals=[25,50,75,100],gridcolor="#e9e2df"), angularaxis=dict(gridcolor="#e9e2df")))
+
+    st.plotly_chart(radar, use_container_width=True, config={"displayModeBar":False})
+
+
+
+st.markdown('<div class="hm-r-section">Dimension Comparison</div>', unsafe_allow_html=True)
+
+if mode == "Chi tiết 4 trụ cột":
+
+    st.caption("So sánh điểm từng trụ cột của các ngân hàng được chọn")
+
+fig2 = go.Figure()
+
+for bank in df["bank"]:
+
+    values = df.loc[df["bank"] == bank, list("ABCD")].iloc[0].tolist()
+
+    fig2.add_bar(name=bank, x=["A · Chiến lược", "B · Sản phẩm", "C · Công nghệ", "D · Vận hành"], y=values, marker_color=BANK_COLORS.get(bank, TEAL), hovertemplate=f"{escape(bank)} · %{{x}}: %{{y:.1f}}<extra></extra>")
+
+fig2.update_layout(barmode="group", height=340, margin=dict(l=10,r=15,t=25,b=55), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(size=12,color=NAVY), yaxis=dict(range=[0,105],title="Điểm / 100",gridcolor="#ede8e4"), legend=dict(orientation="h",y=1.18,x=0))
+
+st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar":False})
+
+
+
+st.markdown('<div class="hm-r-section">Detailed Ranking</div>', unsafe_allow_html=True)
+
+table = df[["bank","BDTI","A","B","C","D"]].copy()
+
+table.insert(0,"Hạng trong nhóm", range(1,len(table)+1))
+
+table.columns = ["Hạng", "Ngân hàng", "BDTI", "Trụ cột A", "Trụ cột B", "Trụ cột C", "Trụ cột D"]
+
+for col in ["BDTI","Trụ cột A","Trụ cột B","Trụ cột C","Trụ cột D"]:
+
+    table[col] = table[col].map(lambda v: f"{v:.3f}" if pd.notna(v) else "—")
+
+st.dataframe(table, use_container_width=True, hide_index=True, height=min(410, 42*(len(table)+1)+12))
+
+
+
+leader = df.iloc[0]
+
+st.markdown('<div class="hm-r-section">Một số nhận định từ dữ liệu</div>', unsafe_allow_html=True)
+
+st.markdown(f'''<div class="hm-r-insight">• <b>{escape(str(leader['bank']))}</b> dẫn đầu nhóm ngân hàng đang chọn với <b>{float(leader['BDTI']):.3f}/100</b> điểm BDTI.<br>
+
+• Điểm trung bình của <b>{len(df)}</b> ngân hàng đang hiển thị là <b>{df['BDTI'].mean():.3f}/100</b>.<br>
+
+• Khoảng cách giữa ngân hàng có điểm cao nhất và thấp nhất trong nhóm là <b>{df['BDTI'].max()-df['BDTI'].min():.3f}</b> điểm.<br>
+
+• Các điểm số là kết quả <b>ước tính từ quy trình chấm tự động</b>, không phải xếp hạng chính thức đã được kiểm định độc lập.</div>''', unsafe_allow_html=True)
+
+st.markdown(f'<div class="hm-r-footer">HerMetrics · Digital Transformation Ranking 2025 · Nguồn dữ liệu: {escape(str(csv_path.relative_to(ROOT)))} · Không suy diễn xu hướng theo năm khi chưa có dữ liệu lịch sử.</div>', unsafe_allow_html=True)

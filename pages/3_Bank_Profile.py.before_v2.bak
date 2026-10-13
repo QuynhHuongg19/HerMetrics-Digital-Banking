@@ -1,0 +1,333 @@
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from pathlib import Path
+
+from utils.theme import apply_theme
+
+st.set_page_config(
+    page_title="Bank Profile | BANK-DX 2025",
+    page_icon="🏦",
+    layout="wide"
+)
+apply_theme()
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+LOGO_DIR = BASE_DIR / "assets" / "logos"
+
+COLORS = {
+    "BIDV": "#E9B82F",
+    "MB": "#1646D8",
+    "OCB": "#A9C935",
+    "VCB": "#008C66",
+    "VietinBank": "#64B5F6"
+}
+
+PILLARS = {
+    "A": "Chiến lược & nguồn lực số",
+    "B": "Sản phẩm số & trải nghiệm khách hàng",
+    "C": "Công nghệ & dữ liệu",
+    "D": "Vận hành số & an toàn"
+}
+
+st.markdown("""
+<style>
+.stApp {
+    background-color: #FFF8FB;
+}
+h1, h2, h3 {
+    color: #AD1457;
+}
+[data-testid="stSidebar"] {
+    background-color: #FCEAF2;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+@st.cache_data
+def load_data():
+    ranking = pd.read_csv(
+        DATA_DIR / "ranking.csv",
+        encoding="utf-8-sig"
+    )
+    scores = pd.read_csv(
+        DATA_DIR / "processed_scores.csv",
+        encoding="utf-8-sig"
+    )
+
+    required_ranking = [
+        "bank", "rank", "BDTI", "A", "B", "C", "D"
+    ]
+    required_scores = [
+        "bank", "criterion", "criterion_name",
+        "pillar", "final_score", "reason",
+        "rubric", "filename", "page", "context"
+    ]
+
+    for filename, df, columns in [
+        ("ranking.csv", ranking, required_ranking),
+        ("processed_scores.csv", scores, required_scores)
+    ]:
+        missing = [c for c in columns if c not in df.columns]
+        if missing:
+            st.error(
+                f"{filename} thiếu các cột: {missing}"
+            )
+            st.stop()
+
+    ranking["bank"] = ranking["bank"].astype(str).str.strip()
+    scores["bank"] = scores["bank"].astype(str).str.strip()
+    scores["criterion"] = scores["criterion"].astype(str).str.strip()
+    scores["final_score"] = pd.to_numeric(
+        scores["final_score"], errors="coerce"
+    )
+
+    return ranking, scores
+
+
+ranking, scores = load_data()
+
+st.title("🏦 BANK PROFILE")
+st.caption(
+    "Phân tích chi tiết kết quả chuyển đổi số theo ngân hàng"
+)
+
+st.warning(
+    "Điểm số hiện tại là kết quả chấm tự động. "
+    "Các nhận định cần được rà soát trước khi sử dụng "
+    "làm kết luận chính thức."
+)
+
+# 1. Chọn ngân hàng
+banks = ranking.sort_values("rank")["bank"].tolist()
+
+bank = st.selectbox(
+    "Chọn ngân hàng cần phân tích",
+    banks
+)
+
+bank_info = ranking[ranking["bank"] == bank].iloc[0]
+bank_scores = scores[
+    scores["bank"] == bank
+].copy()
+
+bank_scores["criterion_order"] = (
+    bank_scores["criterion"].str[0].map(
+        {"A": 0, "B": 1, "C": 2, "D": 3}
+    ) * 10
+    + pd.to_numeric(
+        bank_scores["criterion"].str[1:],
+        errors="coerce"
+    )
+)
+bank_scores = bank_scores.sort_values("criterion_order")
+
+# 2. Logo và tiêu đề ngân hàng
+col_logo, col_name = st.columns([1, 5])
+
+with col_logo:
+    logo_path = LOGO_DIR / f"{bank}.jpg"
+    if logo_path.exists():
+        st.image(str(logo_path), width=115)
+
+with col_name:
+    st.subheader(bank)
+    st.caption(
+        f"Xếp hạng #{int(bank_info['rank'])} "
+        "trong 5 ngân hàng"
+    )
+
+# 3. KPI
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("Thứ hạng", f"#{int(bank_info['rank'])}")
+c2.metric("Điểm BDTI", f"{bank_info['BDTI']:.3f}")
+c3.metric(
+    "Tiêu chí có dữ liệu",
+    f"{bank_scores['final_score'].notna().sum()}/16"
+)
+c4.metric(
+    "Điểm trung bình tiêu chí",
+    f"{bank_scores['final_score'].mean():.2f}/2"
+)
+
+st.divider()
+
+# 4. Điểm 4 trụ cột
+st.subheader("Điểm 4 trụ cột")
+
+pillar_df = pd.DataFrame({
+    "Trụ cột": ["A", "B", "C", "D"],
+    "Điểm": [
+        float(bank_info["A"]),
+        float(bank_info["B"]),
+        float(bank_info["C"]),
+        float(bank_info["D"])
+    ]
+})
+
+pillar_df["Tên trụ cột"] = pillar_df["Trụ cột"].map(PILLARS)
+
+fig = px.bar(
+    pillar_df,
+    x="Trụ cột",
+    y="Điểm",
+    text="Điểm",
+    hover_data=["Tên trụ cột"],
+    color_discrete_sequence=[COLORS.get(bank, "#AD1457")]
+)
+
+fig.update_traces(
+    texttemplate="%{text:.1f}",
+    textposition="outside"
+)
+
+fig.update_layout(
+    height=370,
+    yaxis_range=[0, 110],
+    showlegend=False
+)
+
+st.plotly_chart(fig, width="stretch")
+
+# 5. Chi tiết 16 tiêu chí
+st.subheader("Kết quả chấm điểm 16 tiêu chí")
+
+display_df = bank_scores[
+    ["criterion", "criterion_name", "pillar", "final_score"]
+].rename(columns={
+    "criterion": "Mã tiêu chí",
+    "criterion_name": "Tên tiêu chí",
+    "pillar": "Trụ cột",
+    "final_score": "Điểm (0–2)"
+})
+
+st.dataframe(
+    display_df,
+    hide_index=True,
+    width="stretch"
+)
+
+# 6. Biểu đồ điểm từng tiêu chí
+st.subheader("Phân bố điểm theo 16 tiêu chí")
+
+fig2 = px.bar(
+    bank_scores,
+    x="criterion",
+    y="final_score",
+    color="pillar",
+    text="final_score",
+    category_orders={
+        "criterion": [
+            f"{p}{i}"
+            for p in "ABCD"
+            for i in range(1, 5)
+        ]
+    },
+    labels={
+        "criterion": "Tiêu chí",
+        "final_score": "Điểm",
+        "pillar": "Trụ cột"
+    }
+)
+
+fig2.update_traces(textposition="outside")
+fig2.update_layout(
+    height=400,
+    yaxis_range=[0, 2.4]
+)
+
+st.plotly_chart(fig2, width="stretch")
+
+st.divider()
+
+# 7. Xem giải thích điểm số
+st.subheader("Giải thích điểm số & bằng chứng")
+
+criteria = bank_scores["criterion"].tolist()
+
+selected_criterion = st.selectbox(
+    "Chọn tiêu chí để xem chi tiết",
+    criteria,
+    format_func=lambda code: (
+        code + " – " +
+        str(
+            bank_scores.loc[
+                bank_scores["criterion"] == code,
+                "criterion_name"
+            ].iloc[0]
+        )
+    )
+)
+
+detail = bank_scores[
+    bank_scores["criterion"] == selected_criterion
+].iloc[0]
+
+st.markdown(
+    f"### {selected_criterion} – {detail['criterion_name']}"
+)
+
+st.metric(
+    "Điểm được chấm",
+    f"{detail['final_score']:.0f}/2"
+    if pd.notna(detail["final_score"])
+    else "Chưa có điểm"
+)
+
+st.markdown("**Thang điểm đánh giá:**")
+st.info(str(detail["rubric"]))
+
+st.markdown("**Lý do chấm điểm tự động:**")
+st.write(
+    str(detail["reason"])
+    if pd.notna(detail["reason"])
+    else "Chưa có giải thích"
+)
+
+if "confidence" in detail.index:
+    st.write(
+        "**Mức độ tin cậy:**",
+        detail["confidence"]
+    )
+
+if "review_priority" in detail.index:
+    st.write(
+        "**Mức độ ưu tiên rà soát:**",
+        detail["review_priority"]
+    )
+
+if "warning" in detail.index:
+    if pd.notna(detail["warning"]) and str(detail["warning"]).strip():
+        st.warning(str(detail["warning"]))
+
+st.markdown("**Nguồn bằng chứng:**")
+
+source_col1, source_col2 = st.columns(2)
+
+with source_col1:
+    st.write("Báo cáo:", detail["filename"])
+
+with source_col2:
+    st.write("Trang:", detail["page"])
+
+st.markdown("**Nội dung bằng chứng:**")
+
+if pd.notna(detail["context"]):
+    st.text_area(
+        "Trích đoạn từ báo cáo",
+        value=str(detail["context"]),
+        height=220,
+        disabled=True
+    )
+else:
+    st.info("Chưa có nội dung bằng chứng.")
+
+st.caption(
+    "Nguồn: ranking.csv và processed_scores.csv. "
+    "Giải thích và bằng chứng do quy trình chấm điểm "
+    "tự động cung cấp, chưa được xác minh độc lập."
+)
