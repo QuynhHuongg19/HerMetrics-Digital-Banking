@@ -1,384 +1,767 @@
-"""HerMetrics Bank Profile — standalone page visuals, existing ranking/scoring data.
+"""HerMetrics Hồ sơ ngân hàng — standalone page visuals, existing ranking/scoring data.
+
 Only this page uses the Dragon Bridge artwork. No extra Python theme module.
+
 """
+
 import base64
+
 import html
+
 from pathlib import Path
 
+
+
 import pandas as pd
+
 import plotly.express as px
+
 import streamlit as st
+
+
 
 from utils.theme import apply_theme
 
-st.set_page_config(page_title="Bank Profile | BANK-DX 2025", page_icon="🏦", layout="wide")
+
+
+st.set_page_config(page_title="Hồ sơ ngân hàng | HerMetrics", page_icon="🏦", layout="wide")
+
+
 
 # Shared navigation is rendered exactly once. Do not add another sidebar menu here.
+
 from hermetrics_sidebar import render as _hm_render
+
 _hm_render(Path(__file__).resolve().parent.parent, show_nav=True)
+
 apply_theme()
 
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+
 DATA_DIR = BASE_DIR / "data"
+
 LOGO_DIR = BASE_DIR / "assets" / "logos"
+
 ART_DIR = BASE_DIR / "assets" / "vietnam_art"
+
 HERO_PATH = ART_DIR / "bank_profile_dragon_bridge_hero.jpg"
+
 SIDEBAR_PATH = ART_DIR / "bank_profile_dragon_sidebar.jpg"
 
+
+
 PILLARS = {
+
     "A": "Chiến lược & nguồn lực số",
+
     "B": "Sản phẩm số & trải nghiệm khách hàng",
+
     "C": "Công nghệ & dữ liệu",
+
     "D": "Vận hành số & an toàn",
+
 }
+
 PILLAR_COLORS = {"A": "#F4A340", "B": "#D96987", "C": "#348DD1", "D": "#A58BC8"}
 
 
+
+
+
 def image_data(path: Path):
-    """Use local files, not Streamlit static hosting. Missing art won't crash data views."""
+
+    """Sử dụng ảnh cục bộ; thiếu ảnh không ảnh hưởng dữ liệu."""
+
     if not path.is_file():
+
         return None
+
     return base64.b64encode(path.read_bytes()).decode("ascii")
 
 
+
+
+
 def mountain_background(front: str, back: str) -> str:
+
     """Two soft mountain ridges, embedded as an SVG; no external asset required."""
+
     svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 140" preserveAspectRatio="none">'
+
+        '<svg xmlns="http\://www\.w3.org/2000/svg" viewBox="0 0 600 140" preserveAspectRatio="none">'
+
         f'<path d="M0 132 L70 115 L130 119 L210 78 L255 101 L330 48 L395 84 L465 30 L530 72 L600 16 L600 140 L0 140 Z" fill="{back}" opacity=".53"/>'
+
         f'<path d="M0 138 L95 128 L175 108 L245 120 L320 84 L378 111 L454 67 L515 100 L575 57 L600 71 L600 140 L0 140 Z" fill="{front}" opacity=".62"/>'
+
         '</svg>'
+
     )
+
     return 'data:image/svg+xml;base64,' + base64.b64encode(svg.encode('utf-8')).decode('ascii')
 
+
+
 MOUNTAINS = {
+
     'identity': mountain_background('#D4B9E8', '#F7B6CA'),
+
     'peach': mountain_background('#F6A9A4', '#F7CFBD'),
+
     'blue': mountain_background('#A7BFF3', '#D4DBF8'),
+
     'gold': mountain_background('#F4C4A1', '#F7DBB6'),
+
     'purple': mountain_background('#B8A4E7', '#D8C8F5'),
+
 }
+
+
 
 st.markdown("""
+
 <style>
-/* Bank Profile palette: colors sampled conceptually from the Dragon Bridge sunset. */
+
+/* Hồ sơ ngân hàng palette: colors sampled conceptually from the Dragon Bridge sunset. */
+
 .stApp { background:linear-gradient(180deg,#fffaf5 0%,#fff9fb 52%,#f9f8ff 100%); }
+
 [data-testid="stSidebar"] {background:#fffaf5!important;}
+
 [data-testid="stSidebarNav"] {display:none!important;}
+
 section.main h2,section.main h3,[data-testid="stMain"] h2,[data-testid="stMain"] h3 {color:#851943;}
+
 .hm-bp-hero {position:relative;isolation:isolate;overflow:hidden;border-radius:17px;
+
   border:1px solid #ead8d5;box-shadow:0 9px 25px rgba(49,51,87,.11);margin:0 0 18px;}
+
 .hm-bp-hero img {display:block;width:100%;height:260px;object-fit:cover;object-position:center 40%;}
+
 /* Banner compact: crop water and bottom-right sparkle, preserve dragon bridge. */
+
 .hm-bp-copy {position:absolute;inset:0 auto 0 0;width:36%;box-sizing:border-box;
+
  display:flex;flex-direction:column;justify-content:center;padding:clamp(13px,2vw,32px);
+
  background:linear-gradient(90deg,rgba(255,249,239,.97),rgba(255,247,239,.88) 65%,rgba(255,247,239,0));}
+
 .hm-bp-kicker {color:#8c3450;letter-spacing:2px;font-size:clamp(8px,.9vw,12px);font-weight:800;}
+
 .hm-bp-title {font-family:'Playfair Display',Georgia,serif;color:#75143b;
+
  font-size:clamp(22px,3.2vw,48px);font-weight:800;line-height:1.07;margin:10px 0;}
+
 .hm-bp-subtitle {font-size:clamp(9px,1vw,13px);font-weight:650;color:#57354a;line-height:1.5;}
+
 .hm-bp-sidebar-image {margin:24px 0 10px;border-radius:11px;overflow:hidden;
+
  border:1px solid #f1d9d5;box-shadow:0 5px 16px rgba(66,40,71,.1);}
+
 .hm-bp-sidebar-image img {display:block;width:100%;height:auto;}
+
 [data-testid="stMetric"] {background:linear-gradient(120deg,#fff8f1,#fff3f8);
+
  border:1px solid #efd9e0;border-radius:13px;padding:15px 17px;
+
  box-shadow:0 4px 14px rgba(99,50,75,.045);}
+
 [data-testid="stMetricLabel"] {color:#6f5367!important;}
+
 [data-testid="stMetricValue"] {color:#8a1949!important;}
+
 [data-testid="stPlotlyChart"] {background:rgba(255,255,255,.88);border:1px solid #f0e0e3;
+
  border-radius:14px;padding:9px;}
+
 @media (max-width:720px) {
+
  .hm-bp-hero img{height:185px;object-position:center 40%;}
+
  .hm-bp-copy{width:52%;padding:10px;}
+
  .hm-bp-title{font-size:clamp(17px,5vw,26px);margin:5px 0;}
+
  .hm-bp-kicker{letter-spacing:.5px;}
+
  .hm-bp-subtitle{font-size:9px;}
+
 }
 
+
+
 /* Bank identity and KPI cards – compact editorial dashboard layout. */
+
 .hm-bp-bank-gap {height:8px;}
+
 .hm-bp-bank-name {font-family:'Be Vietnam Pro',sans-serif;font-size:23px;font-weight:800;color:#8a1949;margin-bottom:7px;}
+
 .hm-bp-bank-rank {font-family:'Be Vietnam Pro',sans-serif;font-size:12px;color:#7d7380;}
+
 .hm-bp-kpi {box-sizing:border-box;min-height:116px;padding:17px 18px;border-radius:13px;
+
  border:1px solid rgba(99,61,80,.11);box-shadow:0 4px 13px rgba(76,50,72,.045);
+
  display:flex;flex-direction:column;justify-content:center;gap:5px;}
+
 .hm-bp-kpi-peach {background:#fff0e4;}
+
 .hm-bp-kpi-mint {background:#dff1ed;}
+
 .hm-bp-kpi-gold {background:#fff0c7;}
+
 .hm-bp-kpi-sage {background:#e8efdc;}
+
 .hm-bp-kpi-label {font-size:12px;font-weight:700;color:#445468;}
+
 .hm-bp-kpi-value {font-family:'Playfair Display',Georgia,serif;font-size:27px;
+
  font-weight:800;line-height:1.2;color:#841741;font-variant-numeric:tabular-nums;}
+
 .hm-bp-kpi-note {font-size:10px;color:#6d6a73;}
+
 @media (max-width:720px) {.hm-bp-kpi{min-height:95px;padding:12px}.hm-bp-kpi-value{font-size:21px}}
+
 </style>
+
 """, unsafe_allow_html=True)
 
+
+
 # The page alone owns its art; no shared/sidebar monkey-patching.
+
 hero_data = image_data(HERO_PATH)
+
 if hero_data:
+
     st.markdown(
+
         '<div class="hm-bp-hero">'
+
         f'<img src="data:image/jpeg;base64,{hero_data}" alt="Toàn cảnh Cầu Rồng Đà Nẵng lúc hoàng hôn" />'
+
         '<div class="hm-bp-copy">'
-        '<div class="hm-bp-kicker">VIETNAM COMMERCIAL BANKS</div>'
-        '<div class="hm-bp-title">BANK PROFILE</div>'
+
+        '<div class="hm-bp-kicker">NGÂN HÀNG THƯƠNG MẠI VIỆT NAM</div>'
+
+        '<div class="hm-bp-title">HỒ SƠ NGÂN HÀNG</div>'
+
         '<div class="hm-bp-subtitle">Phân tích chi tiết kết quả chuyển đổi số theo ngân hàng</div>'
+
         '</div></div>',
+
         unsafe_allow_html=True,
+
     )
+
 else:
-    st.title("🏦 BANK PROFILE")
+
+    st.title("🏦 HỒ SƠ NGÂN HÀNG")
+
     st.caption("Phân tích chi tiết kết quả chuyển đổi số theo ngân hàng")
-    st.info("Chưa tìm thấy ảnh banner Bank Profile trong assets/vietnam_art.")
+
+    st.info("Chưa tìm thấy ảnh minh họa Hồ sơ ngân hàng trong assets/vietnam_art.")
+
+
 
 sidebar_data = image_data(SIDEBAR_PATH)
+
 if sidebar_data:
+
     with st.sidebar:
+
         st.markdown(
+
             '<div class="hm-bp-sidebar-image">'
+
             f'<img src="data:image/jpeg;base64,{sidebar_data}" alt="Cầu Rồng và hoàng hôn Đà Nẵng" />'
+
             '</div>', unsafe_allow_html=True,
+
         )
 
+
+
 @st.cache_data
+
 def load_data():
+
     ranking = pd.read_csv(DATA_DIR / "ranking.csv", encoding="utf-8-sig")
+
     scores = pd.read_csv(DATA_DIR / "processed_scores.csv", encoding="utf-8-sig")
+
     required_ranking = ["bank", "rank", "BDTI", "A", "B", "C", "D"]
+
     required_scores = ["bank", "criterion", "criterion_name", "pillar", "final_score",
+
                        "reason", "rubric", "filename", "page", "context"]
+
     for filename, df, columns in [
+
         ("ranking.csv", ranking, required_ranking),
+
         ("processed_scores.csv", scores, required_scores),
+
     ]:
+
         missing = [c for c in columns if c not in df.columns]
+
         if missing:
+
             st.error(f"{filename} thiếu các cột: {missing}")
+
             st.stop()
+
     ranking["bank"] = ranking["bank"].astype(str).str.strip()
+
     scores["bank"] = scores["bank"].astype(str).str.strip()
+
     scores["criterion"] = scores["criterion"].astype(str).str.strip()
+
     scores["final_score"] = pd.to_numeric(scores["final_score"], errors="coerce")
+
     return ranking, scores
+
+
 
 ranking, scores = load_data()
 
 
+
+
+
 # Dashboard composition: bank identity + four art-backed KPIs, paired analytics,
+
 # full-width criterion distribution, and two-column evidence explanation.
+
 # HERMETRICS_BANK_SELECTOR_2026
+
 st.markdown("""
+
 <style>
+
 .st-key-hm_bank_selector_2026 {
+
     position: relative; isolation: isolate; overflow: hidden;
+
     padding: 24px 28px 26px; border-radius: 18px;
+
     border: 1px solid #ead5e5;
+
     background: linear-gradient(110deg, #fffaf8 0%, #fff3f7 54%, #eaf2ff 100%);
+
     box-shadow: 0 5px 20px rgba(98, 46, 88, .06);
+
 }
+
 .st-key-hm_bank_selector_2026::before,
+
 .st-key-hm_bank_selector_2026::after {
+
     content: ""; position: absolute; pointer-events: none; z-index: -1;
+
     right: 0; bottom: 60px; width: 55%; height: 65%;
+
     background-repeat: no-repeat; background-size: 100% 100%;
+
 }
+
 .st-key-hm_bank_selector_2026::before {
+
     background: #e1d9f6;
+
     clip-path: polygon(0 100%, 16% 80%, 28% 91%, 45% 42%, 56% 68%, 73% 20%, 86% 49%, 100% 12%, 100% 100%);
+
     opacity: .52;
+
 }
+
 .st-key-hm_bank_selector_2026::after {
+
     height: 42%; width: 47%; background: #f3c9df;
+
     clip-path: polygon(0 100%, 17% 74%, 30% 90%, 48% 30%, 61% 65%, 79% 15%, 91% 48%, 100% 23%, 100% 100%);
+
     opacity: .62;
+
 }
+
 .hm-bank-select-heading {
+
     font-family: 'Playfair Display', Georgia, serif;
+
     font-size: clamp(28px, 3vw, 45px); font-weight: 800;
+
     line-height: 1.2; color: #851943; margin: 0 0 7px;
+
 }
+
 .hm-bank-select-description {font-size: 14px; color: #72596b; margin-bottom: 17px;}
+
 .st-key-hm_bank_selector_2026 [data-baseweb="select"] > div {
+
     min-height: 72px !important; background: rgba(255,255,255,.96) !important;
+
     border: 2px solid #e8a8c7 !important; border-radius: 13px !important;
+
 }
+
 .st-key-hm_bank_selector_2026 [data-baseweb="select"] span {
+
     font-size: clamp(23px, 2.5vw, 35px) !important;
+
     font-weight: 800 !important; color: #851943 !important;
+
 }
+
 @media(max-width:720px){
+
  .st-key-hm_bank_selector_2026{padding:18px 15px 20px;}
+
  .st-key-hm_bank_selector_2026 [data-baseweb="select"] > div{min-height:62px!important;}
+
 }
+
 </style>
+
 """, unsafe_allow_html=True)
+
+
 
 banks = ranking.sort_values("rank")["bank"].tolist()
+
 with st.container(key="hm_bank_selector_2026"):
+
     st.markdown(
+
         '<div class="hm-bank-select-heading">🏦 Chọn ngân hàng cần phân tích</div>'
+
         '<div class="hm-bank-select-description">Lựa chọn ngân hàng để khám phá kết quả chuyển đổi số và các chỉ số đánh giá</div>',
+
         unsafe_allow_html=True,
+
     )
+
     bank = st.selectbox(
+
         "Chọn ngân hàng cần phân tích",
+
         banks,
+
         label_visibility="collapsed",
+
         key="hm_bank_choice_2026",
+
     )
+
 bank_info = ranking[ranking["bank"] == bank].iloc[0]
+
 bank_scores = scores[scores["bank"] == bank].copy()
+
 bank_scores["criterion_order"] = (
+
     bank_scores["criterion"].str[0].map({"A": 0, "B": 1, "C": 2, "D": 3}) * 10
+
     + pd.to_numeric(bank_scores["criterion"].str[1:], errors="coerce")
+
 )
+
 bank_scores = bank_scores.sort_values("criterion_order")
 
+
+
 # Page-only landscape artwork, anchored to the right so figures stay legible.
+
 st.markdown(f"""<style>
+
 .hm-profile-identity {{background-image:linear-gradient(90deg,#fffaf7 0%,#fff5f2 52%,rgba(255,248,251,.32) 100%),url('{MOUNTAINS['identity']}')!important;
+
  background-size:cover,46% 100%!important;background-position:center,right bottom!important;background-repeat:no-repeat!important;}}
+
 .hm-demo-kpi.hm-kpi-1 {{background-image:linear-gradient(90deg,#fff0e3 0%,rgba(255,240,227,.93) 45%,rgba(255,240,227,.3) 100%),url('{MOUNTAINS['peach']}')!important;}}
+
 .hm-demo-kpi.hm-kpi-2 {{background-image:linear-gradient(90deg,#e6f2fa 0%,rgba(230,242,250,.93) 45%,rgba(230,242,250,.3) 100%),url('{MOUNTAINS['blue']}')!important;}}
+
 .hm-demo-kpi.hm-kpi-3 {{background-image:linear-gradient(90deg,#fff1d2 0%,rgba(255,241,210,.93) 45%,rgba(255,241,210,.3) 100%),url('{MOUNTAINS['gold']}')!important;}}
+
 .hm-demo-kpi.hm-kpi-4 {{background-image:linear-gradient(90deg,#eee7f9 0%,rgba(238,231,249,.93) 45%,rgba(238,231,249,.3) 100%),url('{MOUNTAINS['purple']}')!important;}}
+
 .hm-demo-kpi {{background-size:cover,52% 100%!important;background-position:center,right bottom!important;background-repeat:no-repeat!important;}}
+
 </style>""",unsafe_allow_html=True)
 
+
+
 # Clean, high-contrast identity and KPI cards; the Dragon Bridge remains in the main hero.
+
 st.markdown(f"""
+
 <style>
+
 .hm-profile-identity {{display:flex;align-items:center;gap:18px;min-height:91px;
+
  padding:9px 18px;border-radius:12px;border:1px solid #f1e1e4;
+
  background:linear-gradient(110deg,#fffdf9 0%,#fff2ec 55%,#f5f2ff 100%);margin:4px 0 7px;}}
+
 .hm-profile-logo {{height:62px;min-width:150px;max-width:175px;object-fit:contain;
+
  background:white;padding:6px 13px;border-radius:8px;box-shadow:0 2px 10px #4b35431a;}}
+
 .hm-profile-name {{font-family:'Playfair Display',Georgia,serif;font-size:25px;font-weight:800;
+
  color:#8b1648;line-height:1.1;}}
+
 .hm-profile-rank {{font-size:11px;color:#51475b;margin-top:5px;}}
+
 .hm-demo-kpi {{height:98px;border:1px solid #eedee7;border-radius:11px;box-sizing:border-box;
+
  display:flex;align-items:center;gap:12px;padding:15px 16px;overflow:hidden;
+
  background:#fff2e7;box-shadow:0 3px 12px rgba(72,35,58,.045);}}
+
  .hm-demo-kpi.hm-kpi-1 {{background:#fff0e3;border-color:#f4dccc;}}
+
  .hm-demo-kpi.hm-kpi-2 {{background:#e6f2fa;border-color:#d0e7f5;}}
+
  .hm-demo-kpi.hm-kpi-3 {{background:#fff1d2;border-color:#f5e4b7;}}
+
  .hm-demo-kpi.hm-kpi-4 {{background:#eee7f9;border-color:#dfd3ef;}}
+
 .hm-demo-icon {{display:flex;align-items:center;justify-content:center;flex:none;width:42px;height:42px;
+
  border-radius:50%;background:#ffffffdb;font-size:24px;color:#8b1648;}}
+
 .hm-demo-label {{font-size:11px;font-weight:700;color:#793453;white-space:nowrap;}}
+
 .hm-demo-value {{font-family:'Playfair Display',Georgia,serif;color:#891646;font-size:25px;
+
  font-weight:800;line-height:1.15;white-space:nowrap;}}
+
 .hm-demo-section {{font-family:'Playfair Display',Georgia,serif;font-size:19px;font-weight:800;
+
  color:#8b1648;margin:10px 0 5px;}}
+
 [data-testid="stVerticalBlockBorderWrapper"] {{border-radius:12px;}}
+
 @media(max-width:750px) {{.hm-profile-logo{{min-width:85px;max-width:95px}}
+
  .hm-profile-name{{font-size:20px}}.hm-demo-kpi{{padding:9px;gap:6px}}
+
  .hm-demo-icon{{width:32px;height:32px;font-size:18px}}
+
  .hm-demo-value{{font-size:20px}}.hm-demo-label{{font-size:9px}}}}
+
 </style>
+
 """, unsafe_allow_html=True)
 
+
+
 logo_path = LOGO_DIR / f"{bank}.jpg"
+
 logo_markup = (f'<img class="hm-profile-logo" src="data:image/jpeg;base64,{image_data(logo_path)}" alt="Logo {html.escape(bank)}"/>'
+
                if logo_path.is_file() else "")
+
 st.markdown(
+
     '<div class="hm-profile-identity">' + logo_markup +
+
     '<div><div class="hm-profile-name">' + html.escape(bank) + '</div>' +
+
     f'<div class="hm-profile-rank">Xếp hạng #{int(bank_info["rank"])} trong {len(banks)} ngân hàng</div>' +
+
     '</div></div>', unsafe_allow_html=True)
 
+
+
 score_count = int(bank_scores["final_score"].notna().sum())
+
 avg_score = bank_scores["final_score"].mean()
+
 avg_display = f"{avg_score:.2f}/2" if pd.notna(avg_score) else "Chưa có dữ liệu"
+
 metrics = [
+
     ("🏆", "Thứ hạng", f"#{int(bank_info['rank'])}"),
+
     ("▥", "Điểm BDTI", f"{bank_info['BDTI']:.3f}"),
+
     ("☷", "Tiêu chí có dữ liệu", f"{score_count}/16"),
+
     ("☆", "Điểm trung bình tiêu chí", avg_display),
+
 ]
+
 for idx, (col, (symbol, label, value)) in enumerate(zip(st.columns(4, gap="small"), metrics), start=1):
+
     with col:
+
         st.markdown(
+
             f'<div class="hm-demo-kpi hm-kpi-{idx}"><span class="hm-demo-icon">' + html.escape(symbol) +
+
             '</span><div><div class="hm-demo-label">' + html.escape(label) +
+
             '</div><div class="hm-demo-value">' + html.escape(value) +
+
             '</div></div></div>', unsafe_allow_html=True)
 
+
+
 analytics_left, analytics_right = st.columns(2, gap='medium')
+
 with analytics_left:
+
     st.markdown('<div class="hm-demo-section">Điểm 4 trụ cột</div>', unsafe_allow_html=True)
+
 pillar_df = pd.DataFrame({
+
     "Trụ cột": list("ABCD"), "Điểm": [float(bank_info[p]) for p in "ABCD"]})
+
 pillar_df["Tên trụ cột"] = pillar_df["Trụ cột"].map(PILLARS)
+
 fig = px.bar(pillar_df, x="Trụ cột", y="Điểm", text="Điểm",
+
              color="Trụ cột", color_discrete_map=PILLAR_COLORS,
+
              hover_data=["Tên trụ cột"])
+
 fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
+
 fig.update_layout(height=310, yaxis_range=[0, 110], showlegend=False,
+
                   plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+
                   margin=dict(l=5, r=5, t=22, b=5), font=dict(color="#66596c"))
+
 with analytics_left:
+
     st.plotly_chart(fig, use_container_width=True)
 
+
+
 with analytics_right:
+
     st.markdown('<div class="hm-demo-section">Phân bố điểm theo 16 tiêu chí</div>', unsafe_allow_html=True)
+
 fig2 = px.bar(
+
     bank_scores, x="criterion", y="final_score", color="pillar", text="final_score",
+
     color_discrete_map=PILLAR_COLORS,
+
     category_orders={"criterion": [f"{p}{i}" for p in "ABCD" for i in range(1, 5)]},
+
     labels={"criterion": "Tiêu chí", "final_score": "Điểm", "pillar": "Trụ cột"},
+
 )
+
 fig2.update_traces(textposition="outside")
+
 fig2.update_layout(height=310, yaxis_range=[0, 2.4],
+
                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+
                    font=dict(color="#584c62"), margin=dict(l=5, r=5, t=15, b=15))
+
 with analytics_right:
+
     st.plotly_chart(fig2, use_container_width=True)
 
+
+
 st.markdown('<div class="hm-demo-section">Kết quả chấm điểm 16 tiêu chí</div>', unsafe_allow_html=True)
+
 display_df = bank_scores[["criterion", "criterion_name", "pillar", "final_score"]].rename(columns={
+
     "criterion": "Mã tiêu chí", "criterion_name": "Tên tiêu chí",
+
     "pillar": "Trụ cột", "final_score": "Điểm (0–2)"})
+
 st.dataframe(display_df, hide_index=True, use_container_width=True, height=310)
 
+
+
 explain_left, explain_right = st.columns([1.15, 1], gap="medium")
+
 with explain_left:
+
     st.markdown('<div class="hm-demo-section">Giải thích điểm số & bằng chứng</div>', unsafe_allow_html=True)
+
     criteria = bank_scores["criterion"].tolist()
+
     selected_criterion = st.selectbox(
+
         "Chọn tiêu chí để xem chi tiết", criteria,
+
         format_func=lambda code: code + " – " + str(
+
             bank_scores.loc[bank_scores["criterion"] == code, "criterion_name"].iloc[0]))
+
     detail = bank_scores[bank_scores["criterion"] == selected_criterion].iloc[0]
+
     st.markdown("**Thang điểm đánh giá:**")
+
     st.info(str(detail["rubric"]))
+
     st.markdown("**Lý do chấm điểm tự động:**")
+
     st.write(str(detail["reason"]) if pd.notna(detail["reason"]) else "Chưa có giải thích")
+
     if "confidence" in detail.index and pd.notna(detail["confidence"]):
+
         st.write("**Mức độ tin cậy:**", detail["confidence"])
+
     if "review_priority" in detail.index and pd.notna(detail["review_priority"]):
+
         st.write("**Mức độ ưu tiên rà soát:**", detail["review_priority"])
+
     if "warning" in detail.index and pd.notna(detail["warning"]) and str(detail["warning"]).strip():
+
         st.warning(str(detail["warning"]))
+
 with explain_right:
+
     st.markdown('<div class="hm-demo-section">' + html.escape(str(selected_criterion)) +
+
                 ' – ' + html.escape(str(detail["criterion_name"])) + '</div>', unsafe_allow_html=True)
+
     score_display = f"{detail['final_score']:.0f}/2" if pd.notna(detail["final_score"]) else "Chưa có điểm"
+
     st.markdown('<div class="hm-demo-kpi" style="height:84px"><span class="hm-demo-icon">♜</span>'
+
                 '<div><div class="hm-demo-label">Điểm được chấm</div>'
+
                 '<div class="hm-demo-value">' + html.escape(score_display) + '</div></div></div>',
+
                 unsafe_allow_html=True)
+
     st.markdown("**Nguồn bằng chứng:**")
+
     st.write("Báo cáo:", detail["filename"])
+
     st.write("Trang:", detail["page"])
+
     st.markdown("**Nội dung bằng chứng:**")
+
     if pd.notna(detail["context"]):
+
         st.text_area("Trích đoạn từ báo cáo", value=str(detail["context"]),
+
                      height=175, disabled=True)
+
     else:
+
         st.info("Chưa có nội dung bằng chứng.")
+
 st.caption(
+
     "Nguồn: ranking.csv và processed_scores.csv. Giải thích và bằng chứng do quy trình "
+
     "chấm điểm tự động cung cấp, chưa được xác minh độc lập."
+
 )

@@ -1,15 +1,15 @@
-"""Shared HerMetrics sidebar. Call after st.set_page_config()."""
+"""Thanh điều hướng dùng chung của HerMetrics. Gọi sau st.set_page_config()."""
 from pathlib import Path
 import streamlit as st
 
 PAGES = [
-    ("app.py", "Overview", "📊"),
-    ("pages/2_Ranking_Dashboard.py", "Ranking", "📈"),
-    ("pages/3_Bank_Profile.py", "Bank Profile", "🏦"),
-    ("pages/4_Bank_Comparison.py", "Bank Comparison", "⚖️"),
-    ("pages/1_Evidence_Explorer.py", "Evidence Explorer", "🔎"),
-    ("pages/5_Scoring_Evidence_Audit.py", "Scoring Audit", "📋"),
-    ("pages/6_Data_Validation.py", "Data Validation", "✅"),
+    ("app.py", "Tổng quan", "📊"),
+    ("pages/2_Ranking_Dashboard.py", "Xếp hạng ngân hàng", "📈"),
+    ("pages/3_Bank_Profile.py", "Hồ sơ ngân hàng", "🏦"),
+    ("pages/4_Bank_Comparison.py", "So sánh ngân hàng", "⚖️"),
+    ("pages/1_Evidence_Explorer.py", "Tra cứu bằng chứng", "🔎"),
+    ("pages/5_Scoring_Evidence_Audit.py", "Kiểm tra chấm điểm", "📋"),
+    ("pages/6_Data_Validation.py", "Kiểm định dữ liệu", "✅"),
 ]
 
 CSS = """
@@ -28,7 +28,7 @@ CSS = """
 [data-testid="stSidebar"] [data-testid="stPageLink"] a:hover {background:#f4ebed!important;}
 [data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"],
 [data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-selected="true"] {background:#eceff1!important;}
-/* Existing Evidence Explorer sidebar uses these class names. */
+/* Trang Tra cứu bằng chứng hiện có sử dụng các tên lớp này cho thanh bên. */
 [data-testid="stSidebar"] .hm-brand {font-family:'Playfair Display',Georgia,serif!important;font-size:32px!important;font-weight:800!important;color:#790c34!important;white-space:nowrap!important;}
 [data-testid="stSidebar"] .hm-tag {font-size:10px!important;letter-spacing:1.35px!important;font-weight:800!important;color:#790c34!important;}
 [data-testid="stSidebar"] .hm-label {font-size:12px!important;letter-spacing:1.4px!important;font-weight:800!important;color:#85616f!important;}
@@ -36,17 +36,17 @@ CSS = """
 """
 
 def apply_sidebar(root: Path, *, existing_custom_nav: bool = False):
-    """Render the same sidebar on each page; avoid duplicate nav on Evidence Explorer."""
+    """Hiển thị thanh bên thống nhất; tránh lặp menu ở trang Tra cứu bằng chứng."""
     st.markdown(CSS, unsafe_allow_html=True)
     if existing_custom_nav:
         return
     with st.sidebar:
-        st.markdown('<div class="hm-shared-brand">HerMetrics</div><div class="hm-shared-tag">BANKING INTELLIGENCE</div><div class="hm-shared-workspace">WORKSPACE</div>', unsafe_allow_html=True)
+        st.markdown('<div class="hm-shared-brand">HerMetrics</div><div class="hm-shared-tag">PHÂN TÍCH NGÂN HÀNG</div><div class="hm-shared-workspace">DANH MỤC PHÂN TÍCH</div>', unsafe_allow_html=True)
         for relative, label, icon in PAGES:
             if (root / relative).is_file():
                 st.page_link(relative, label=label, icon=icon)
 
-# Compatibility wrapper for older HerMetrics pages
+# Hàm tương thích với các trang HerMetrics phiên bản cũ
 def render(*args, **kwargs):
     root = Path(__file__).resolve().parent
 
@@ -55,23 +55,11 @@ def render(*args, **kwargs):
     else:
         existing_custom_nav = not kwargs.get("show_nav", True)
 
-    return apply_sidebar(
-        root,
-        existing_custom_nav=existing_custom_nav
-    )
-
-    # Nhận diện trang đã có menu riêng
-    show_nav = kwargs.get("show_nav", True)
-
-    # Nếu trang đã có menu riêng, chỉ áp dụng CSS
-    return apply_sidebar(
-        root,
-        existing_custom_nav=not show_nav
-    )
-
+    return apply_sidebar(root, existing_custom_nav=existing_custom_nav)
 
 
 # HERMETRICS_SIDEBAR_ART_V3
+# Phần mã người dùng gửi kết thúc ngay sau hai lệnh import dưới đây.
 def _hm_add_sidebar_art():
     from pathlib import Path
     import streamlit as st
